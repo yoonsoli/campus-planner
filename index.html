@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>캠퍼스 플래너 — 대학생 하루 관리</title>
+<meta name="description" content="시간표 · 하루 플래너 · D-Day · 집중 타이머, 네 명이 함께 만드는 대학생 하루 관리 웹">
+
+<!-- 본문 폰트: Pretendard Variable (CDN) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+
+<style>
+/* ============================================================
+   📐 캠퍼스 플래너 — 공통 디자인 시스템 (팀원 필독!)
+
+   ▸ 색상은 아래 :root 의 CSS 변수만 사용하세요. 예) color: var(--ink)
+   ▸ 각 기능 카드에는 자기 액센트 색이 이미 지정되어 있어요.
+       진한 색   → var(--accent)
+       연한 배경 → var(--accent-soft)
+     내 섹션 안에서 포인트 색이 필요하면 이 두 개만 쓰면 됩니다.
+   ▸ 공통 컴포넌트 클래스:
+       .btn            기본 버튼 (외곽선)
+       .btn-primary    강조 버튼 (액센트 색 채움 — 내 카드 안에서 쓰면
+                       자동으로 내 섹션 색이 됩니다)
+       .input          텍스트/날짜 입력창
+       .chip           작은 라운드 태그
+       .hl             형광펜 하이라이트 (우리 서비스 시그니처!)
+   ▸ 숫자(시간, D-Day 카운트 등)는 font-family: var(--font-num) 권장.
+   ▸ ⚠️ 내 <section id="..."> 내부만 수정하세요. 공통 스타일을 바꿔야
+     한다면 먼저 팀 채팅방에서 상의!
+   ============================================================ */
+
+:root {
+  /* ----- 기본 색 ----- */
+  --bg: #F3F5FA;            /* 페이지 배경 (쿨톤 페이퍼) */
+  --surface: #FFFFFF;       /* 카드 배경 */
+  --ink: #171C2B;           /* 본문 글자 */
+  --sub: #656C7E;           /* 보조 글자 */
+  --line: #E4E8F1;          /* 테두리/구분선 */
+  --primary: #4353FF;       /* 서비스 대표색 (울트라마린) */
+  --primary-soft: #EBEDFF;
+  --highlight: #FFEB66;     /* 형광펜 노랑 */
+
+  /* ----- 섹션별 액센트 (내 기능 색은 여기서!) ----- */
+  --c-timetable: #4353FF;  --c-timetable-soft: #EBEDFF;  /* 시간표 · 팀원 1 */
+  --c-planner:   #00A86F;  --c-planner-soft:   #E1F6EC;  /* 플래너 · 팀원 2 */
+  --c-dday:      #F5476B;  --c-dday-soft:      #FEE9EE;  /* D-Day · 팀원 3 */
+  --c-timer:     #F0861A;  --c-timer-soft:     #FEF0DE;  /* 타이머 · 팀원 4 */
+
+  /* ----- 타이포그래피 ----- */
+  --font-body: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+               "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --font-num: ui-monospace, "SF Mono", "D2Coding", Consolas, monospace; /* 숫자용 */
+
+  /* ----- 모양 ----- */
+  --radius: 20px;       /* 카드 */
+  --radius-sm: 12px;    /* 버튼, 입력창 */
+  --shadow: 0 1px 2px rgba(23, 28, 43, 0.04), 0 8px 24px rgba(23, 28, 43, 0.05);
+  --shadow-hover: 0 2px 4px rgba(23, 28, 43, 0.05), 0 16px 40px rgba(23, 28, 43, 0.10);
+}
+
+/* ---------- 리셋 & 베이스 ---------- */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 84px; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; border-radius: 4px; }
+
+.skip-link {
+  position: absolute; left: 16px; top: -48px;
+  background: var(--ink); color: #fff;
+  padding: 8px 16px; border-radius: 8px; font-size: 14px; z-index: 100;
+  transition: top 0.15s;
+}
+.skip-link:focus { top: 12px; }
+
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+/* ---------- 헤더 (내비게이션) ---------- */
+.site-header {
+  position: sticky; top: 0; z-index: 50;
+  background: rgba(243, 245, 250, 0.82);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--line);
+}
+.site-header .wrap {
+  display: flex; align-items: center; justify-content: space-between;
+  height: 64px; gap: 16px;
+}
+.logo {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 17px; font-weight: 800; letter-spacing: -0.3px;
+  color: var(--ink); text-decoration: none; white-space: nowrap;
+}
+.logo-mark {
+  width: 26px; height: 26px; border-radius: 8px;
+  background: var(--primary);
+  display: grid; place-items: center;
+  color: #fff; font-size: 14px; font-weight: 800;
+  transform: rotate(-6deg); /* 스티커 느낌으로 살짝 기울임 */
+}
+.main-nav { display: flex; gap: 4px; overflow-x: auto; }
+.main-nav a {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 13px; border-radius: 999px;
+  font-size: 14px; font-weight: 600; color: var(--sub);
+  text-decoration: none; white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.main-nav a .dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--nav-c, var(--primary));
+}
+.main-nav a:hover { background: var(--surface); color: var(--ink); }
+.main-nav a.active { background: var(--ink); color: #fff; }
+
+/* ---------- 히어로 ---------- */
+.hero { padding: 64px 0 44px; }
+.hero .eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 13px; font-weight: 700; color: var(--primary);
+  background: var(--primary-soft);
+  padding: 5px 14px; border-radius: 999px;
+  margin-bottom: 18px;
+}
+.hero h1 {
+  font-size: clamp(34px, 5.5vw, 54px);
+  font-weight: 800; line-height: 1.22; letter-spacing: -1.5px;
+  max-width: 640px;
+  text-wrap: balance;
+}
+.hero .lede {
+  margin-top: 16px; max-width: 520px;
+  color: var(--sub); font-size: 16.5px;
+}
+.hero .today {
+  margin-top: 26px;
+  display: inline-flex; align-items: center; gap: 10px;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 10px 16px;
+  font-size: 14.5px; font-weight: 700;
+  box-shadow: var(--shadow);
+}
+.hero .today .date-num { font-family: var(--font-num); letter-spacing: -0.3px; }
+
+/* 형광펜 하이라이트 — 서비스 시그니처. 강조하고 싶은 단어에 <span class="hl"> */
+.hl {
+  background: linear-gradient(transparent 55%, var(--highlight) 55%, var(--highlight) 92%, transparent 92%);
+  padding: 0 2px;
+}
+
+/* ---------- 화면 전환: 홈 ↔ 기능 상세 ----------
+   <body data-view="..."> 값으로 화면을 전환합니다. (아래 script 참고)
+   - "home"      : 히어로 + 4개 카드 미리보기 (벤토 그리드)
+   - "timetable" 등 : 해당 기능 카드 하나만 전체 화면으로
+   ⚠️ 팀원은 신경 쓸 필요 없어요 — 내 섹션을 만들면 홈과 상세 화면
+   양쪽에 자동으로 나타납니다. */
+body:not([data-view="home"]) .hero { display: none; }
+body:not([data-view="home"]) .feature { display: none; }
+body[data-view="timetable"] #timetable,
+body[data-view="planner"]   #planner,
+body[data-view="dday"]      #dday,
+body[data-view="timer"]     #timer {
+  display: flex;
+  grid-column: span 12;   /* 상세에서는 카드가 전체 폭 차지 */
+}
+body:not([data-view="home"]) :is(#timetable, #planner, #dday, #timer) .placeholder {
+  min-height: 58vh;       /* 상세에서는 작업 공간을 넉넉하게 */
+}
+
+/* 상세 화면 상단의 "홈으로" 바 */
+.view-bar { display: none; }
+body:not([data-view="home"]) .view-bar {
+  display: flex; align-items: center;
+  padding: 28px 24px 4px;
+}
+body:not([data-view="home"]) .bento { padding-top: 18px; }
+
+/* ---------- 벤토 그리드 ---------- */
+.bento {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 18px;
+  padding-bottom: 72px;
+}
+#timetable { grid-column: span 8; }
+#planner   { grid-column: span 4; }
+#dday      { grid-column: span 5; }
+#timer     { grid-column: span 7; }
+
+@media (max-width: 900px) {
+  #timetable, #planner, #dday, #timer { grid-column: span 12; }
+}
+
+/* ---------- 기능 카드 ---------- */
+.feature {
+  min-width: 0; /* 그리드 안에서 내용이 길어져도 카드가 화면 밖으로 밀리지 않게 */
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 22px 24px 24px;
+  display: flex; flex-direction: column; gap: 16px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+@media (hover: hover) {
+  .feature:hover { transform: translateY(-3px); box-shadow: var(--shadow-hover); }
+}
+.feature-head {
+  display: flex; flex-wrap: wrap;
+  align-items: center; justify-content: space-between; gap: 10px;
+}
+/* 섹션 스티커: 각 기능의 이름표 (액센트 색 자동 적용) */
+.sticker {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 14px; font-weight: 800; letter-spacing: -0.2px;
+  padding: 6px 14px; border-radius: 999px;
+  white-space: nowrap;
+  transform: rotate(-1.5deg); /* 노트에 붙인 스티커 느낌 */
+}
+.feature-head-right { display: flex; align-items: center; gap: 8px; }
+.owner {
+  font-size: 12.5px; font-weight: 700; color: var(--sub);
+  border: 1px dashed var(--line); border-radius: 999px;
+  padding: 4px 12px; white-space: nowrap;
+}
+/* 홈 카드에서 상세 화면으로 들어가는 링크 */
+.expand {
+  font-size: 12.5px; font-weight: 700; text-decoration: none;
+  color: var(--accent, var(--primary));
+  background: var(--accent-soft, var(--primary-soft));
+  border-radius: 999px; padding: 4px 12px; white-space: nowrap;
+  transition: filter 0.15s;
+}
+.expand:hover { filter: brightness(0.94); }
+body:not([data-view="home"]) .expand { display: none; } /* 상세에선 숨김 */
+
+/* 기능이 들어오기 전 자리 표시 — 개발 시작하면 이 div를 통째로 교체하세요 */
+.placeholder {
+  flex: 1;
+  display: grid; place-items: center;
+  min-height: 200px;
+  border: 2px dashed color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent-soft) 45%, transparent);
+  color: var(--sub);
+  font-size: 15px; font-weight: 600;
+  text-align: center;
+  padding: 24px;
+}
+#timetable .placeholder { min-height: 320px; }
+#timer .placeholder     { min-height: 240px; }
+
+/* ---------- 공통 컴포넌트 (팀원들이 가져다 쓰는 부품) ---------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  font-family: inherit; font-size: 14.5px; font-weight: 700;
+  padding: 10px 18px; border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--ink);
+  border: 1.5px solid var(--line);
+  text-decoration: none; /* <a> 태그로 써도 밑줄 없이 */
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+}
+.btn:hover { border-color: var(--accent, var(--primary)); }
+.btn:active { transform: scale(0.97); }
+.btn-primary {
+  background: var(--accent, var(--primary));
+  border-color: var(--accent, var(--primary));
+  color: #fff;
+}
+.btn-primary:hover { filter: brightness(0.93); }
+.input {
+  font-family: inherit; font-size: 15px;
+  padding: 10px 14px; border-radius: var(--radius-sm);
+  border: 1.5px solid var(--line);
+  background: var(--surface); color: var(--ink);
+  width: 100%;
+}
+.input:focus { outline: none; border-color: var(--accent, var(--primary)); }
+.input::placeholder { color: #A6ACBC; }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12.5px; font-weight: 700;
+  padding: 4px 11px; border-radius: 999px;
+  background: var(--accent-soft, var(--primary-soft));
+  color: var(--accent, var(--primary));
+}
+
+/* ---------- 푸터 ---------- */
+.site-footer {
+  border-top: 1px solid var(--line);
+  padding: 28px 0 40px;
+  color: var(--sub); font-size: 13.5px;
+}
+.site-footer .wrap {
+  display: flex; flex-wrap: wrap; align-items: center;
+  justify-content: space-between; gap: 12px;
+}
+.site-footer .crew { display: flex; flex-wrap: wrap; gap: 6px; }
+.site-footer .crew span {
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: 3px 11px; font-size: 12.5px; font-weight: 600;
+  background: var(--surface);
+}
+
+/* ---------- 등장 애니메이션 ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  .hero, .feature {
+    opacity: 0; transform: translateY(14px);
+    animation: rise 0.55s ease forwards;
+  }
+  .feature:nth-of-type(1) { animation-delay: 0.08s; }
+  .feature:nth-of-type(2) { animation-delay: 0.16s; }
+  .feature:nth-of-type(3) { animation-delay: 0.24s; }
+  .feature:nth-of-type(4) { animation-delay: 0.32s; }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+}
+
+@media (max-width: 640px) {
+  .hero { padding: 44px 0 32px; }
+  .wrap { padding: 0 18px; }
+  .feature { padding: 18px 18px 20px; }
+  .site-header .wrap { height: 58px; }
+  .logo span.word { display: none; } /* 좁은 화면에선 로고 마크만 */
+}
+</style>
+</head>
+<body data-view="home">
+
+<a class="skip-link" href="#content">본문으로 건너뛰기</a>
+
+<!-- ================= 헤더 / 내비게이션 ================= -->
+<header class="site-header">
+  <div class="wrap">
+    <a class="logo" href="#home">
+      <span class="logo-mark">캠</span>
+      <span class="word">캠퍼스 플래너</span>
+    </a>
+    <nav class="main-nav" aria-label="기능 바로가기">
+      <a href="#home" style="--nav-c: var(--ink)"><span class="dot"></span>홈</a>
+      <a href="#timetable" style="--nav-c: var(--c-timetable)"><span class="dot"></span>시간표</a>
+      <a href="#planner"   style="--nav-c: var(--c-planner)"><span class="dot"></span>플래너</a>
+      <a href="#dday"      style="--nav-c: var(--c-dday)"><span class="dot"></span>D-Day</a>
+      <a href="#timer"     style="--nav-c: var(--c-timer)"><span class="dot"></span>타이머</a>
+    </nav>
+  </div>
+</header>
+
+<main id="content">
+  <!-- ================= 히어로 ================= -->
+  <section class="hero wrap">
+    <span class="eyebrow">✦ 구치파치 2주차 · 4인 팀 프로젝트</span>
+    <h1>대학생활의 <span class="hl">하루</span>를<br>한 페이지에 담다</h1>
+    <p class="lede">
+      시간표 확인부터 할 일 체크, 시험 D-Day, 집중 타이머까지 —
+      네 명이 각자 하나씩 만들어 합치는 캠퍼스 플래너입니다.
+    </p>
+    <div class="today" aria-live="polite">
+      📌 오늘은 <span class="date-num" id="today-date"></span>
+    </div>
+  </section>
+
+  <!-- 상세 화면에서만 보이는 "홈으로" 바 -->
+  <div class="view-bar wrap">
+    <a class="btn" href="#home">← 홈으로</a>
+  </div>
+
+  <!-- ================= 기능 섹션 (벤토 그리드) =================
+       ⚠️ 팀원 규칙: 자기 <section> 내부만 수정!
+       개발을 시작하면 .placeholder div를 지우고 그 자리에 기능을 만드세요.
+       포인트 색은 var(--accent) / var(--accent-soft) 를 그대로 쓰면 됩니다.
+       내 섹션은 홈(미리보기)과 상세(전체 화면) 양쪽에 자동으로 표시됩니다. -->
+  <div class="bento wrap">
+
+    <!-- 🗓 시간표 · 담당: 팀원 1 -->
+    <section id="timetable" class="feature"
+             style="--accent: var(--c-timetable); --accent-soft: var(--c-timetable-soft)"
+             aria-label="오늘의 시간표">
+      <div class="feature-head">
+        <span class="sticker">🗓 오늘의 시간표</span>
+        <span class="feature-head-right">
+          <span class="owner">담당 · 팀원 1</span>
+          <a class="expand" href="#timetable">크게 보기 ↗</a>
+        </span>
+      </div>
+      <div class="placeholder">여기는 시간표 기능 자리 — 담당: 팀원 1</div>
+    </section>
+
+    <!-- ✅ 하루 플래너 · 담당: 팀원 2 -->
+    <section id="planner" class="feature"
+             style="--accent: var(--c-planner); --accent-soft: var(--c-planner-soft)"
+             aria-label="하루 플래너">
+      <div class="feature-head">
+        <span class="sticker">✅ 하루 플래너</span>
+        <span class="feature-head-right">
+          <span class="owner">담당 · 팀원 2</span>
+          <a class="expand" href="#planner">크게 보기 ↗</a>
+        </span>
+      </div>
+      <div class="placeholder">여기는 하루 플래너 기능 자리 — 담당: 팀원 2</div>
+    </section>
+
+    <!-- ⏳ D-Day 계산기 · 담당: 팀원 3 -->
+    <section id="dday" class="feature"
+             style="--accent: var(--c-dday); --accent-soft: var(--c-dday-soft)"
+             aria-label="D-Day 계산기">
+      <div class="feature-head">
+        <span class="sticker">⏳ D-Day 계산기</span>
+        <span class="feature-head-right">
+          <span class="owner">담당 · 팀원 3</span>
+          <a class="expand" href="#dday">크게 보기 ↗</a>
+        </span>
+      </div>
+      <div class="placeholder">여기는 D-Day 계산기 기능 자리 — 담당: 팀원 3</div>
+    </section>
+
+    <!-- 🍅 집중 타이머 · 담당: 팀원 4 -->
+    <section id="timer" class="feature"
+             style="--accent: var(--c-timer); --accent-soft: var(--c-timer-soft)"
+             aria-label="집중 타이머">
+      <div class="feature-head">
+        <span class="sticker">🍅 집중 타이머</span>
+        <span class="feature-head-right">
+          <span class="owner">담당 · 팀원 4</span>
+          <a class="expand" href="#timer">크게 보기 ↗</a>
+        </span>
+      </div>
+      <div class="placeholder">여기는 집중 타이머 기능 자리 — 담당: 팀원 4</div>
+    </section>
+
+  </div>
+</main>
+
+<!-- ================= 푸터 ================= -->
+<footer class="site-footer">
+  <div class="wrap">
+    <div>© 2026 캠퍼스 플래너 · Git으로 함께 만드는 팀 프로젝트</div>
+    <div class="crew" aria-label="만든 사람들">
+      <span>🗓 팀원 1</span><span>✅ 팀원 2</span><span>⏳ 팀원 3</span><span>🍅 팀원 4</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // ----- 오늘 날짜 표시 -----
+  var days = ['일', '월', '화', '수', '목', '금', '토'];
+  var now = new Date();
+  document.getElementById('today-date').textContent =
+    now.getFullYear() + '년 ' + (now.getMonth() + 1) + '월 ' + now.getDate() + '일 (' + days[now.getDay()] + ')';
+
+  // ----- 화면 전환 (해시 라우터) -----
+  // 주소창의 # 값에 따라 화면을 바꿉니다. 뒤로 가기/앞으로 가기도 그대로 동작해요.
+  //   #home (또는 # 없음)                     → 홈 (전체 미리보기)
+  //   #timetable / #planner / #dday / #timer → 그 기능만 전체 화면으로
+  var FEATURES = ['timetable', 'planner', 'dday', 'timer'];
+  var navLinks = document.querySelectorAll('.main-nav a');
+
+  function applyView() {
+    var id = location.hash.replace('#', '');
+    var view = FEATURES.indexOf(id) !== -1 ? id : 'home';
+    document.body.dataset.view = view;
+    navLinks.forEach(function (link) {
+      link.classList.toggle('active', link.getAttribute('href') === '#' + view);
+    });
+    if (view !== 'home') window.scrollTo({ top: 0, behavior: 'instant' });
+  }
+  window.addEventListener('hashchange', applyView);
+  applyView();
+
+  // #timetable 같은 주소로 바로 열었을 때 브라우저가 자동으로 앵커 위치까지
+  // 스크롤해 버리므로, 로드가 끝난 뒤 화면 맨 위로 되돌립니다.
+  window.addEventListener('load', function () {
+    setTimeout(applyView, 0);
+  });
+</script>
+
+</body>
+</html>
