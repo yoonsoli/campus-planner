@@ -295,6 +295,34 @@ body:not([data-view="home"]) .expand { display: none; } /* 상세에선 숨김 *
   color: var(--accent, var(--primary));
 }
 
+/* ---------- D-Day 계산기 (팀원 3 전용 스타일) ---------- */
+#dday .dday-form { display: flex; flex-wrap: wrap; gap: 8px; }
+#dday .dday-form #dday-title { flex: 1 1 160px; }
+#dday .dday-form #dday-date { flex: 0 1 150px; }
+#dday .dday-form #dday-tag { flex: 0 1 110px; }
+#dday .dday-empty { color: var(--sub); font-size: 14px; text-align: center; padding: 20px 0; }
+#dday .dday-list {
+  list-style: none;
+  display: flex; flex-direction: column; gap: 8px;
+  max-height: 320px; overflow-y: auto; padding-right: 2px;
+}
+#dday .dday-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+#dday .dday-item.is-past { opacity: 0.5; filter: grayscale(1); }
+#dday .dday-item-title {
+  flex: 1; min-width: 0; font-weight: 700; font-size: 14.5px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#dday .dday-item-count {
+  font-family: var(--font-num); font-weight: 800; font-size: 14.5px;
+  color: var(--accent); white-space: nowrap;
+}
+#dday .dday-item .btn { padding: 4px 10px; font-size: 12.5px; border-radius: 999px; }
+
 /* ---------- 푸터 ---------- */
 .site-footer {
   border-top: 1px solid var(--line);
@@ -420,7 +448,14 @@ body:not([data-view="home"]) .expand { display: none; } /* 상세에선 숨김 *
           <a class="expand" href="#dday">크게 보기 ↗</a>
         </span>
       </div>
-      <div class="placeholder">여기는 D-Day 계산기 기능 자리 — 담당: 팀원 3</div>
+      <form id="dday-form" class="dday-form">
+        <input type="text" class="input" id="dday-title" placeholder="제목 (예: 기말고사)" required>
+        <input type="date" class="input" id="dday-date" required>
+        <input type="text" class="input" id="dday-tag" placeholder="태그 (선택)">
+        <button type="submit" class="btn btn-primary">추가</button>
+      </form>
+      <p id="dday-empty" class="dday-empty">등록된 D-Day가 없어요. 위에서 추가해보세요!</p>
+      <ul id="dday-list" class="dday-list"></ul>
     </section>
 
     <!-- 🍅 집중 타이머 · 담당: 팀원 4 -->
@@ -481,6 +516,92 @@ body:not([data-view="home"]) .expand { display: none; } /* 상세에선 숨김 *
   window.addEventListener('load', function () {
     setTimeout(applyView, 0);
   });
+
+  // ----- D-Day 계산기 (팀원 3) -----
+  (function () {
+    var STORAGE_KEY = 'cp.dday.items';
+    var form = document.getElementById('dday-form');
+    var titleInput = document.getElementById('dday-title');
+    var dateInput = document.getElementById('dday-date');
+    var tagInput = document.getElementById('dday-tag');
+    var listEl = document.getElementById('dday-list');
+    var emptyEl = document.getElementById('dday-empty');
+
+    function loadItems() {
+      try {
+        return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+      } catch (e) {
+        return [];
+      }
+    }
+    function saveItems(items) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    }
+    function dayDiff(dateStr) {
+      var today = new Date();
+      today.setHours(0, 0, 0, 0);
+      var target = new Date(dateStr + 'T00:00:00');
+      return Math.round((target - today) / 86400000);
+    }
+    function ddayLabel(days) {
+      if (days === 0) return 'D-DAY';
+      return days > 0 ? 'D-' + days : 'D+' + Math.abs(days);
+    }
+    function escapeHtml(str) {
+      var div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function render() {
+      var withDays = loadItems().map(function (item) {
+        return { item: item, days: dayDiff(item.date) };
+      });
+      withDays.sort(function (a, b) {
+        var aPast = a.days < 0, bPast = b.days < 0;
+        if (aPast !== bPast) return aPast ? 1 : -1;
+        return aPast ? b.days - a.days : a.days - b.days;
+      });
+
+      emptyEl.style.display = withDays.length ? 'none' : 'block';
+      listEl.innerHTML = withDays.map(function (entry) {
+        var item = entry.item, isPast = entry.days < 0;
+        return '<li class="dday-item' + (isPast ? ' is-past' : '') + '">' +
+          '<span class="dday-item-count">' + ddayLabel(entry.days) + '</span>' +
+          '<span class="dday-item-title">' + escapeHtml(item.title) + '</span>' +
+          '<span class="chip">' + escapeHtml(item.tag) + '</span>' +
+          '<button type="button" class="btn" data-id="' + item.id + '">삭제</button>' +
+          '</li>';
+      }).join('');
+    }
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var title = titleInput.value.trim();
+      var date = dateInput.value;
+      if (!title || !date) return;
+
+      var items = loadItems();
+      items.push({
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        title: title,
+        date: date,
+        tag: tagInput.value.trim() || '기타'
+      });
+      saveItems(items);
+      form.reset();
+      render();
+    });
+
+    listEl.addEventListener('click', function (e) {
+      var btn = e.target.closest('button[data-id]');
+      if (!btn) return;
+      saveItems(loadItems().filter(function (item) { return item.id !== btn.dataset.id; }));
+      render();
+    });
+
+    render();
+  })();
 </script>
 
 </body>
