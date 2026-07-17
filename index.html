@@ -300,6 +300,11 @@ body:not([data-view="home"]) .expand { display: none; } /* 상세에선 숨김 *
 #dday .dday-form #dday-title { flex: 1 1 160px; }
 #dday .dday-form #dday-date { flex: 0 1 150px; }
 #dday .dday-form #dday-tag { flex: 0 1 110px; }
+#dday .dday-tag-color {
+  flex: 0 0 auto; width: 38px; height: 38px; padding: 3px;
+  border: 1.5px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--surface); cursor: pointer;
+}
 #dday .dday-repeat-label {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 13.5px; color: var(--sub); white-space: nowrap;
@@ -491,6 +496,7 @@ body:not([data-view="home"]) .expand { display: none; } /* 상세에선 숨김 *
         <input type="text" class="input" id="dday-title" placeholder="제목 (예: 기말고사)" required>
         <input type="date" class="input" id="dday-date" required>
         <input type="text" class="input" id="dday-tag" placeholder="태그 (선택)">
+        <input type="color" id="dday-tag-color" class="dday-tag-color" value="#4353FF" title="태그 색상">
         <label class="dday-repeat-label"><input type="checkbox" id="dday-repeat"> 매년 반복</label>
         <button type="submit" class="btn btn-primary" id="dday-submit">추가</button>
         <button type="button" class="btn" id="dday-cancel-edit" hidden>취소</button>
@@ -576,19 +582,14 @@ body:not([data-view="home"]) .expand { display: none; } /* 상세에선 숨김 *
   // ----- D-Day 계산기 (팀원 3) -----
   (function () {
     var STORAGE_KEY = 'cp.dday.items';
-    var TAG_PALETTE = [
-      { bg: '#EBEDFF', fg: '#4353FF' },
-      { bg: '#E1F6EC', fg: '#00A86F' },
-      { bg: '#FEE9EE', fg: '#F5476B' },
-      { bg: '#FEF0DE', fg: '#F0861A' },
-      { bg: '#F1E8FE', fg: '#8B5CF6' },
-      { bg: '#E5F4FE', fg: '#0EA5E9' }
-    ];
+    var TAG_COLOR_KEY = 'cp.dday.tagColors';
+    var DEFAULT_TAG_COLOR = '#4353FF';
 
     var form = document.getElementById('dday-form');
     var titleInput = document.getElementById('dday-title');
     var dateInput = document.getElementById('dday-date');
     var tagInput = document.getElementById('dday-tag');
+    var tagColorInput = document.getElementById('dday-tag-color');
     var repeatInput = document.getElementById('dday-repeat');
     var submitBtn = document.getElementById('dday-submit');
     var cancelBtn = document.getElementById('dday-cancel-edit');
@@ -647,8 +648,9 @@ body:not([data-view="home"]) .expand { display: none; } /* 상세에선 숨김 *
       var start = new Date(item.createdAt + 'T00:00:00');
       var target = resolveTarget(item);
       var total = target - start;
-      if (total <= 0) return 100;
-      var pct = Math.round(((today - start) / total) * 100);
+      if (total <= 0) return 0;
+      var remaining = target - today;
+      var pct = Math.round((remaining / total) * 100);
       return Math.max(0, Math.min(100, pct));
     }
     function ddayLabel(days) {
@@ -660,13 +662,15 @@ body:not([data-view="home"]) .expand { display: none; } /* 상세에선 숨김 *
       div.textContent = str;
       return div.innerHTML;
     }
-    function hashStr(str) {
-      var h = 0;
-      for (var i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0;
-      return Math.abs(h);
+    function loadTagColors() {
+      try { return JSON.parse(localStorage.getItem(TAG_COLOR_KEY)) || {}; } catch (e) { return {}; }
+    }
+    function saveTagColors(map) {
+      localStorage.setItem(TAG_COLOR_KEY, JSON.stringify(map));
     }
     function tagColor(tag) {
-      return TAG_PALETTE[hashStr(tag) % TAG_PALETTE.length];
+      var hex = loadTagColors()[tag] || DEFAULT_TAG_COLOR;
+      return { bg: hex + '22', fg: hex };
     }
 
     function resetForm() {
@@ -752,6 +756,10 @@ body:not([data-view="home"]) .expand { display: none; } /* 상세에선 숨김 *
       var tag = tagInput.value.trim() || '기타';
       var repeatYearly = repeatInput.checked;
 
+      var tagColors = loadTagColors();
+      tagColors[tag] = tagColorInput.value;
+      saveTagColors(tagColors);
+
       var items = loadItems();
       if (editingId) {
         items = items.map(function (item) {
@@ -772,6 +780,10 @@ body:not([data-view="home"]) .expand { display: none; } /* 상세에선 숨김 *
     cancelBtn.addEventListener('click', resetForm);
     searchInput.addEventListener('input', render);
     sortSelect.addEventListener('change', render);
+    tagInput.addEventListener('input', function () {
+      var known = loadTagColors()[tagInput.value.trim()];
+      if (known) tagColorInput.value = known;
+    });
 
     function handleListClick(e) {
       var btn = e.target.closest('button[data-action]');
@@ -790,6 +802,7 @@ body:not([data-view="home"]) .expand { display: none; } /* 상세에선 숨김 *
         titleInput.value = target.title;
         dateInput.value = target.date;
         tagInput.value = target.tag;
+        tagColorInput.value = loadTagColors()[target.tag] || DEFAULT_TAG_COLOR;
         repeatInput.checked = !!target.repeatYearly;
         submitBtn.textContent = '수정 완료';
         cancelBtn.hidden = false;
