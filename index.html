@@ -392,7 +392,313 @@ body:not([data-view="home"]) .expand { display: none; } /* 상세에선 숨김 *
           <a class="expand" href="#timetable">크게 보기 ↗</a>
         </span>
       </div>
-      <div class="placeholder">여기는 시간표 기능 자리 — 담당: 팀원 1</div>
+      <!-- ===== 시간표 기능 (팀원 1) =====
+           이 섹션 안에서만 동작하도록 클래스는 모두 tt- 접두사,
+           스타일과 스크립트도 섹션 안에 함께 둡니다. -->
+      <div class="tt-meta">
+        <span class="chip">2026학년도 1학기</span>
+        <span class="tt-hint">✏️ 수업 추가·삭제는 "크게 보기"에서</span>
+        <span class="tt-today-label" id="tt-today-label"></span>
+      </div>
+
+      <!-- 수업 추가 폼 -->
+      <form class="tt-form" id="tt-form">
+        <input class="input tt-in-title" id="tt-in-title" placeholder="과목명 (예: 선형대수)" maxlength="20">
+        <input class="input tt-in-room" id="tt-in-room" placeholder="강의실 (선택)" maxlength="15">
+        <select class="input" id="tt-in-day" aria-label="요일"></select>
+        <select class="input" id="tt-in-start" aria-label="시작 시간"></select>
+        <span aria-hidden="true">–</span>
+        <select class="input" id="tt-in-end" aria-label="종료 시간"></select>
+        <button class="btn btn-primary" type="submit">+ 추가</button>
+      </form>
+      <p class="tt-msg" id="tt-msg" role="alert"></p>
+
+      <div class="tt-scroll">
+        <div class="tt-grid" id="tt-grid" role="table" aria-label="주간 시간표"></div>
+      </div>
+
+      <style>
+        /* ---- 시간표 전용 스타일 (tt-*) ---- */
+        .tt-meta {
+          display: flex; align-items: center; justify-content: space-between;
+          gap: 10px; flex-wrap: wrap;
+        }
+        .tt-today-label { font-size: 13px; font-weight: 700; color: var(--sub); }
+        .tt-scroll { overflow-x: auto; }
+        .tt-grid {
+          display: grid;
+          grid-template-columns: 52px repeat(5, minmax(96px, 1fr));
+          grid-template-rows: 34px repeat(18, 25px); /* 헤더 + 9:00~18:00 (30분×18) */
+          min-width: 560px;
+          position: relative;
+        }
+        .tt-dayhead {
+          grid-row: 1;
+          display: flex; align-items: center; justify-content: center;
+          font-size: 13px; font-weight: 800; color: var(--sub);
+        }
+        .tt-dayhead.tt-today {
+          color: var(--accent);
+        }
+        .tt-dayhead.tt-today::after {
+          content: "오늘";
+          font-size: 10px; font-weight: 800;
+          background: var(--accent); color: #fff;
+          border-radius: 999px; padding: 1px 6px; margin-left: 5px;
+        }
+        .tt-time {
+          display: flex; justify-content: flex-end; padding-right: 8px;
+          font-family: var(--font-num); font-size: 11px; color: var(--sub);
+          transform: translateY(-6px); /* 라벨을 가로선 위치에 맞춤 */
+        }
+        .tt-cell { border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+        .tt-cell.tt-half { border-top-style: dashed; border-top-color: color-mix(in srgb, var(--line) 55%, transparent); }
+        .tt-cell.tt-lastcol { border-right: 1px solid var(--line); }
+        .tt-cell.tt-lastrow { border-bottom: 1px solid var(--line); }
+        .tt-todaycol { background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
+        .tt-class {
+          margin: 2px 3px; padding: 6px 8px;
+          border-radius: 8px;
+          border-left: 3px solid var(--tt-c);
+          background: var(--tt-c-soft);
+          overflow: hidden;
+          z-index: 1;
+          transition: transform 0.15s, box-shadow 0.15s;
+        }
+        @media (hover: hover) {
+          .tt-class:hover { transform: scale(1.03); box-shadow: var(--shadow-hover); z-index: 2; }
+        }
+        .tt-class b {
+          display: block; font-size: 12.5px; font-weight: 800; line-height: 1.3;
+          color: var(--ink); letter-spacing: -0.2px;
+        }
+        .tt-class small { font-size: 11px; color: var(--sub); }
+        /* 과목 색상 팔레트 */
+        .tt-c1 { --tt-c: #4353FF; --tt-c-soft: #EBEDFF; }
+        .tt-c2 { --tt-c: #00A86F; --tt-c-soft: #E1F6EC; }
+        .tt-c3 { --tt-c: #F5476B; --tt-c-soft: #FEE9EE; }
+        .tt-c4 { --tt-c: #F0861A; --tt-c-soft: #FEF0DE; }
+        .tt-c5 { --tt-c: #8B5CF6; --tt-c-soft: #F1EBFE; }
+        .tt-c6 { --tt-c: #0E9BAF; --tt-c-soft: #E0F5F8; }
+        /* 수업 추가 폼 */
+        .tt-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+        .tt-form .input { width: auto; }
+        .tt-form .tt-in-title { flex: 1 1 150px; min-width: 130px; }
+        .tt-form .tt-in-room { flex: 0 1 120px; min-width: 100px; }
+        .tt-msg { font-size: 13px; font-weight: 700; color: var(--c-dday); }
+        .tt-msg:empty { display: none; }
+        /* 수업 블록 삭제 버튼 */
+        .tt-class { position: relative; }
+        .tt-del {
+          position: absolute; top: 3px; right: 3px;
+          width: 18px; height: 18px; line-height: 1; padding: 0;
+          border: none; border-radius: 6px; cursor: pointer;
+          background: transparent; color: var(--sub);
+          font-size: 13px; font-weight: 800; font-family: inherit;
+          opacity: 0.45;
+        }
+        .tt-del:hover { opacity: 1; background: rgba(0, 0, 0, 0.07); color: var(--c-dday); }
+        /* ---- 홈에서는 읽기 전용 미리보기 ----
+           추가 폼과 삭제 버튼은 숨기고, 시간표를 더 촘촘하게 보여줍니다.
+           수업 추가/삭제는 상세 화면("크게 보기")에서만! */
+        body[data-view="home"] #timetable .tt-form,
+        body[data-view="home"] #timetable .tt-msg,
+        body[data-view="home"] #timetable .tt-del { display: none; }
+        body[data-view="home"] #timetable .tt-grid {
+          grid-template-rows: 30px repeat(18, 19px);
+          min-width: 480px;
+        }
+        body[data-view="home"] #timetable .tt-class {
+          padding: 4px 7px;
+        }
+        body[data-view="home"] #timetable .tt-class b { font-size: 11.5px; }
+        body[data-view="home"] #timetable .tt-class small { font-size: 10px; }
+        body[data-view="home"] #timetable .tt-hint { display: inline; }
+        .tt-hint { display: none; font-size: 12px; color: var(--sub); font-weight: 600; }
+      </style>
+
+      <script>
+      (function () {
+        // ---- 예시 수업 데이터 (처음 열었을 때만 사용) ----
+        // day: 0=월 … 4=금 / 시간은 "9:00"처럼 문자열로
+        var DEFAULT_CLASSES = [
+          { title: '자료구조',        room: '공학관 302',  day: 0, start: '9:00',  end: '10:30', color: 1 },
+          { title: '자료구조',        room: '공학관 302',  day: 2, start: '9:00',  end: '10:30', color: 1 },
+          { title: '웹 프로그래밍',   room: 'IT관 505',    day: 1, start: '10:30', end: '12:00', color: 2 },
+          { title: '웹 프로그래밍',   room: 'IT관 505',    day: 3, start: '10:30', end: '12:00', color: 2 },
+          { title: '운영체제',        room: '공학관 210',  day: 0, start: '13:00', end: '14:30', color: 3 },
+          { title: '운영체제',        room: '공학관 210',  day: 2, start: '13:00', end: '14:30', color: 3 },
+          { title: '확률과 통계',     room: '자연관 101',  day: 1, start: '13:30', end: '15:00', color: 4 },
+          { title: '심리학의 이해',   room: '교양관 B103', day: 4, start: '14:00', end: '16:00', color: 5 },
+          { title: '오픈소스 실습',   room: 'IT관 402',    day: 3, start: '15:00', end: '17:00', color: 6 },
+          { title: '대학영어',        room: '어학관 204',  day: 4, start: '9:30',  end: '11:00', color: 4 }
+        ];
+
+        // ---- 저장/불러오기 (브라우저 localStorage) ----
+        // 추가·삭제할 때마다 저장해서 새로고침해도 내 시간표가 유지됩니다.
+        var STORE_KEY = 'campusPlanner.timetable.v1';
+        var classes;
+        try {
+          classes = JSON.parse(localStorage.getItem(STORE_KEY)) || DEFAULT_CLASSES;
+        } catch (e) {
+          classes = DEFAULT_CLASSES;
+        }
+        function save() {
+          localStorage.setItem(STORE_KEY, JSON.stringify(classes));
+        }
+
+        var DAYS = ['월', '화', '수', '목', '금'];
+        var START = 9 * 60, END = 18 * 60, SLOT = 30; // 9:00~18:00, 30분 단위
+        var rows = (END - START) / SLOT;
+        var grid = document.getElementById('tt-grid');
+
+        function toMin(t) {
+          var p = t.split(':');
+          return parseInt(p[0], 10) * 60 + parseInt(p[1], 10);
+        }
+        function rowOf(t) { return (toMin(t) - START) / SLOT + 2; } // +2: 1행은 요일 헤더
+
+        // 오늘 요일 (0=월 … 4=금, 주말이면 -1)
+        var jsDay = new Date().getDay(); // 0=일 … 6=토
+        var todayIdx = (jsDay >= 1 && jsDay <= 5) ? jsDay - 1 : -1;
+        document.getElementById('tt-today-label').textContent =
+          todayIdx >= 0 ? '오늘은 ' + DAYS[todayIdx] + '요일이에요' : '오늘은 주말! 수업이 없어요 🎉';
+
+        // 오늘 요일 열 배경
+        if (todayIdx >= 0) {
+          var col = document.createElement('div');
+          col.className = 'tt-todaycol';
+          col.style.gridColumn = todayIdx + 2;
+          col.style.gridRow = '2 / span ' + rows;
+          grid.appendChild(col);
+        }
+
+        // 요일 헤더
+        DAYS.forEach(function (d, i) {
+          var h = document.createElement('div');
+          h.className = 'tt-dayhead' + (i === todayIdx ? ' tt-today' : '');
+          h.style.gridColumn = i + 2;
+          h.textContent = d;
+          grid.appendChild(h);
+        });
+
+        // 시간 라벨 (정시마다) + 격자 셀
+        for (var r = 0; r < rows; r++) {
+          if (r % 2 === 0) {
+            var t = document.createElement('div');
+            t.className = 'tt-time';
+            t.style.gridColumn = 1;
+            t.style.gridRow = r + 2;
+            t.textContent = (START + r * SLOT) / 60 + ':00';
+            grid.appendChild(t);
+          }
+          for (var c = 0; c < 5; c++) {
+            var cell = document.createElement('div');
+            cell.className = 'tt-cell'
+              + (r % 2 === 1 ? ' tt-half' : '')
+              + (c === 4 ? ' tt-lastcol' : '')
+              + (r === rows - 1 ? ' tt-lastrow' : '');
+            cell.style.gridColumn = c + 2;
+            cell.style.gridRow = r + 2;
+            grid.appendChild(cell);
+          }
+        }
+
+        // 분(minute) → "9:30" 형태 문자열
+        function minToT(m) {
+          return Math.floor(m / 60) + ':' + (m % 60 === 0 ? '00' : '30');
+        }
+
+        // ---- 수업 블록 그리기 (추가/삭제 때마다 다시 그림) ----
+        function renderClasses() {
+          grid.querySelectorAll('.tt-class').forEach(function (el) { el.remove(); });
+          classes.forEach(function (cls, idx) {
+            var el = document.createElement('div');
+            el.className = 'tt-class tt-c' + cls.color;
+            el.style.gridColumn = cls.day + 2;
+            el.style.gridRow = rowOf(cls.start) + ' / ' + rowOf(cls.end);
+            el.title = cls.title + ' · ' + cls.start + '–' + cls.end + (cls.room ? ' · ' + cls.room : '');
+
+            var del = document.createElement('button');
+            del.type = 'button';
+            del.className = 'tt-del';
+            del.setAttribute('aria-label', cls.title + ' 삭제');
+            del.textContent = '×';
+            del.addEventListener('click', function () {
+              classes.splice(idx, 1);
+              save();
+              renderClasses();
+            });
+
+            var name = document.createElement('b');
+            name.textContent = cls.title;
+            var room = document.createElement('small');
+            room.textContent = cls.room || '';
+
+            el.appendChild(del);
+            el.appendChild(name);
+            el.appendChild(room);
+            grid.appendChild(el);
+          });
+        }
+        renderClasses();
+
+        // ---- 수업 추가 폼 ----
+        var form = document.getElementById('tt-form');
+        var msg = document.getElementById('tt-msg');
+        var selDay = document.getElementById('tt-in-day');
+        var selStart = document.getElementById('tt-in-start');
+        var selEnd = document.getElementById('tt-in-end');
+
+        DAYS.forEach(function (d, i) { selDay.add(new Option(d + '요일', i)); });
+        for (var m = START; m <= END; m += SLOT) {
+          if (m < END) selStart.add(new Option(minToT(m), m));
+          if (m > START) selEnd.add(new Option(minToT(m), m));
+        }
+        selStart.value = 9 * 60;        // 기본값 9:00
+        selEnd.value = 10 * 60 + 30;    // 기본값 10:30
+
+        // 같은 과목명이면 같은 색, 새 과목이면 다음 색을 순환해서 사용
+        function colorFor(title) {
+          for (var i = 0; i < classes.length; i++) {
+            if (classes[i].title === title) return classes[i].color;
+          }
+          var seen = {}, count = 0;
+          classes.forEach(function (c) {
+            if (!seen[c.title]) { seen[c.title] = true; count++; }
+          });
+          return (count % 6) + 1;
+        }
+
+        form.addEventListener('submit', function (e) {
+          e.preventDefault();
+          msg.textContent = '';
+          var title = document.getElementById('tt-in-title').value.trim();
+          var room = document.getElementById('tt-in-room').value.trim();
+          var day = parseInt(selDay.value, 10);
+          var start = parseInt(selStart.value, 10);
+          var end = parseInt(selEnd.value, 10);
+
+          if (!title) { msg.textContent = '과목명을 입력해 주세요.'; return; }
+          if (end <= start) { msg.textContent = '종료 시간은 시작 시간보다 늦어야 해요.'; return; }
+          var overlap = classes.some(function (c) {
+            return c.day === day && toMin(c.start) < end && start < toMin(c.end);
+          });
+          if (overlap) { msg.textContent = '그 시간에는 이미 수업이 있어요!'; return; }
+
+          classes.push({
+            title: title, room: room, day: day,
+            start: minToT(start), end: minToT(end),
+            color: colorFor(title)
+          });
+          save();
+          renderClasses();
+          form.reset();
+          selStart.value = 9 * 60;
+          selEnd.value = 10 * 60 + 30;
+        });
+      })();
+      </script>
     </section>
 
     <!-- ✅ 하루 플래너 · 담당: 팀원 2 -->
