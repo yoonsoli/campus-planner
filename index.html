@@ -259,6 +259,44 @@ body:not([data-view="home"]) .expand { display: none; } /* 상세에선 숨김 *
 #timetable .placeholder { min-height: 320px; }
 #timer .placeholder     { min-height: 240px; }
 
+/* ---------- 하루 플래너 (담당: 팀원 2) ---------- */
+.planner-form { display: flex; gap: 8px; }
+.planner-form .input { flex: 1; }
+.planner-list {
+  list-style: none;
+  display: flex; flex-direction: column; gap: 8px;
+  flex: 1; overflow-y: auto;
+}
+.planner-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.planner-check {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 14.5px; font-weight: 600;
+  cursor: pointer; flex: 1; min-width: 0;
+}
+.planner-check input[type="checkbox"] {
+  width: 18px; height: 18px; flex-shrink: 0;
+  accent-color: var(--accent);
+}
+.planner-check span { overflow-wrap: anywhere; }
+.planner-item.done .planner-check span {
+  color: var(--sub); text-decoration: line-through;
+}
+.planner-remove {
+  border: none; background: transparent; color: var(--sub);
+  font-size: 14px; line-height: 1; cursor: pointer;
+  padding: 4px 6px; border-radius: 8px;
+}
+.planner-remove:hover { background: var(--accent-soft); color: var(--accent); }
+.planner-empty {
+  color: var(--sub); font-size: 14px; text-align: center;
+  padding: 24px 0;
+}
+
 /* ---------- 공통 컴포넌트 (팀원들이 가져다 쓰는 부품) ---------- */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -406,7 +444,14 @@ body:not([data-view="home"]) .expand { display: none; } /* 상세에선 숨김 *
           <a class="expand" href="#planner">크게 보기 ↗</a>
         </span>
       </div>
-      <div class="placeholder">여기는 하루 플래너 기능 자리 — 담당: 팀원 2</div>
+      <form class="planner-form" id="planner-form">
+        <input class="input" id="planner-input" type="text"
+               placeholder="오늘 할 일을 입력하세요" aria-label="할 일 입력" required>
+        <button class="btn btn-primary" type="submit">추가</button>
+      </form>
+      <ul class="planner-list" id="planner-list" aria-live="polite">
+        <li class="planner-empty" id="planner-empty">아직 등록된 할 일이 없어요. 위에서 추가해보세요!</li>
+      </ul>
     </section>
 
     <!-- ⏳ D-Day 계산기 · 담당: 팀원 3 -->
@@ -481,6 +526,54 @@ body:not([data-view="home"]) .expand { display: none; } /* 상세에선 숨김 *
   window.addEventListener('load', function () {
     setTimeout(applyView, 0);
   });
+
+  // ----- 하루 플래너: 할 일 추가/완료/삭제 (담당: 팀원 2) -----
+  (function () {
+    var form = document.getElementById('planner-form');
+    var input = document.getElementById('planner-input');
+    var list = document.getElementById('planner-list');
+    var emptyMsg = document.getElementById('planner-empty');
+
+    function updateEmptyState() {
+      var hasItems = list.querySelectorAll('.planner-item').length > 0;
+      emptyMsg.style.display = hasItems ? 'none' : '';
+    }
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var text = input.value.trim();
+      if (!text) return;
+
+      var li = document.createElement('li');
+      li.className = 'planner-item';
+      li.innerHTML =
+        '<label class="planner-check">' +
+          '<input type="checkbox">' +
+          '<span></span>' +
+        '</label>' +
+        '<button type="button" class="planner-remove" aria-label="할 일 삭제">✕</button>';
+      li.querySelector('span').textContent = text; // textContent로 넣어 XSS 방지
+
+      list.appendChild(li);
+      input.value = '';
+      input.focus();
+      updateEmptyState();
+    });
+
+    list.addEventListener('change', function (e) {
+      if (e.target.matches('input[type="checkbox"]')) {
+        e.target.closest('.planner-item').classList.toggle('done', e.target.checked);
+      }
+    });
+
+    list.addEventListener('click', function (e) {
+      var btn = e.target.closest('.planner-remove');
+      if (btn) {
+        btn.closest('.planner-item').remove();
+        updateEmptyState();
+      }
+    });
+  })();
 </script>
 
 </body>
