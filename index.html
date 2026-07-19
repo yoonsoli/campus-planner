@@ -260,6 +260,12 @@ body:not([data-view="home"]) .expand { display: none; } /* 상세에선 숨김 *
 #timer .placeholder     { min-height: 240px; }
 
 /* ---------- 하루 플래너 (담당: 팀원 2) ---------- */
+.planner-toolbar { display: flex; }
+.planner-toolbar .input { width: 100%; cursor: pointer; }
+.planner-note {
+  color: var(--sub); font-size: 13px; text-align: center;
+  margin-top: -6px;
+}
 .planner-form { display: flex; gap: 8px; }
 .planner-form .input { flex: 1; }
 .planner-list {
@@ -286,11 +292,25 @@ body:not([data-view="home"]) .expand { display: none; } /* 상세에선 숨김 *
 .planner-item.done .planner-check span {
   color: var(--sub); text-decoration: line-through;
 }
+.planner-tag {
+  font-size: 11px; font-weight: 700;
+  color: var(--accent); background: var(--accent-soft);
+  padding: 2px 8px; border-radius: 999px;
+  margin-left: 7px; white-space: nowrap;
+  vertical-align: middle;
+}
+.planner-edit-input {
+  flex: 1; padding: 4px 8px; font-size: 14.5px; font-weight: 600;
+}
+#planner-progress .num { font-family: var(--font-num); }
+.planner-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.planner-edit,
 .planner-remove {
   border: none; background: transparent; color: var(--sub);
   font-size: 14px; line-height: 1; cursor: pointer;
   padding: 4px 6px; border-radius: 8px;
 }
+.planner-edit:hover,
 .planner-remove:hover { background: var(--accent-soft); color: var(--accent); }
 .planner-empty {
   color: var(--sub); font-size: 14px; text-align: center;
@@ -440,18 +460,21 @@ body:not([data-view="home"]) .expand { display: none; } /* 상세에선 숨김 *
       <div class="feature-head">
         <span class="sticker">✅ 하루 플래너</span>
         <span class="feature-head-right">
+          <span class="chip" id="planner-progress" hidden></span>
           <span class="owner">담당 · 팀원 2</span>
           <a class="expand" href="#planner">크게 보기 ↗</a>
         </span>
+      </div>
+      <div class="planner-toolbar">
+        <select class="input" id="planner-date" aria-label="플래너 날짜 선택"></select>
       </div>
       <form class="planner-form" id="planner-form">
         <input class="input" id="planner-input" type="text"
                placeholder="오늘 할 일을 입력하세요" aria-label="할 일 입력" required>
         <button class="btn btn-primary" type="submit">추가</button>
       </form>
-      <ul class="planner-list" id="planner-list" aria-live="polite">
-        <li class="planner-empty" id="planner-empty">아직 등록된 할 일이 없어요. 위에서 추가해보세요!</li>
-      </ul>
+      <p class="planner-note" id="planner-note" hidden>지난 기록은 읽기 전용이에요. 위에서 날짜를 선택해 오늘로 돌아갈 수 있어요.</p>
+      <ul class="planner-list" id="planner-list" aria-live="polite"></ul>
     </section>
 
     <!-- ⏳ D-Day 계산기 · 담당: 팀원 3 -->
@@ -527,50 +550,184 @@ body:not([data-view="home"]) .expand { display: none; } /* 상세에선 숨김 *
     setTimeout(applyView, 0);
   });
 
-  // ----- 하루 플래너: 할 일 추가/완료/삭제 (담당: 팀원 2) -----
+  // ----- 하루 플래너: 날짜별 할 일 저장/추가/완료/삭제 (담당: 팀원 2) -----
   (function () {
+    var STORAGE_KEY = 'campusPlanner.todosByDate';
+
     var form = document.getElementById('planner-form');
     var input = document.getElementById('planner-input');
     var list = document.getElementById('planner-list');
-    var emptyMsg = document.getElementById('planner-empty');
+    var note = document.getElementById('planner-note');
+    var dateSelect = document.getElementById('planner-date');
+    var progressChip = document.getElementById('planner-progress');
 
-    function updateEmptyState() {
-      var hasItems = list.querySelectorAll('.planner-item').length > 0;
-      emptyMsg.style.display = hasItems ? 'none' : '';
+    function pad(n) { return n < 10 ? '0' + n : '' + n; }
+    function dateStrOf(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+    function makeId() { return 'item' + Date.now() + Math.random().toString(36).slice(2); }
+    var today = dateStrOf(new Date());
+
+    function loadData() {
+      try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
+      catch (e) { return {}; }
     }
+    function saveData() { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+
+    var data = loadData();
+
+    // 오늘 목록이 처음 만들어지는 시점에만, 직전 기록의 미완료 항목을 오늘로 이월
+    if (!data[today]) {
+      var pastDates = Object.keys(data).filter(function (d) { return d < today; }).sort();
+      var prevDate = pastDates[pastDates.length - 1];
+      var carried = prevDate
+        ? data[prevDate].filter(function (i) { return !i.done; }).map(function (i) {
+            return { id: makeId(), text: i.text, done: false, carried: true };
+          })
+        : [];
+      data[today] = carried;
+      saveData();
+    }
+
+    var selectedDate = today;
+
+    function formatDateLabel(dateStr) {
+      var parts = dateStr.split('-');
+      var label = parts[0] + '년 ' + parseInt(parts[1], 10) + '월 ' + parseInt(parts[2], 10) + '일';
+      return dateStr === today ? label + ' (오늘)' : label;
+    }
+
+    function renderDateOptions() {
+      var dates = Object.keys(data).sort(function (a, b) { return a < b ? 1 : -1; });
+      dateSelect.innerHTML = '';
+      dates.forEach(function (dateStr) {
+        var opt = document.createElement('option');
+        opt.value = dateStr;
+        opt.textContent = formatDateLabel(dateStr);
+        dateSelect.appendChild(opt);
+      });
+      dateSelect.value = selectedDate;
+    }
+
+    function updateProgressChip() {
+      var items = data[selectedDate] || [];
+      if (items.length === 0) { progressChip.hidden = true; return; }
+      var doneCount = items.filter(function (i) { return i.done; }).length;
+      progressChip.hidden = false;
+      progressChip.innerHTML =
+        '<span class="num">' + doneCount + '/' + items.length + '</span> 완료';
+    }
+
+    function renderList() {
+      var readOnly = selectedDate !== today;
+      var items = data[selectedDate] || [];
+
+      form.style.display = readOnly ? 'none' : '';
+      note.hidden = !readOnly;
+      updateProgressChip();
+
+      list.innerHTML = '';
+      if (items.length === 0) {
+        var emptyLi = document.createElement('li');
+        emptyLi.className = 'planner-empty';
+        emptyLi.textContent = readOnly
+          ? '이 날짜에는 등록된 할 일이 없어요.'
+          : '아직 등록된 할 일이 없어요. 위에서 추가해보세요!';
+        list.appendChild(emptyLi);
+        return;
+      }
+
+      items.forEach(function (item) {
+        var li = document.createElement('li');
+        li.className = 'planner-item' + (item.done ? ' done' : '');
+        li.dataset.id = item.id;
+        li.innerHTML =
+          '<label class="planner-check">' +
+            '<input type="checkbox"' + (item.done ? ' checked' : '') + (readOnly ? ' disabled' : '') + '>' +
+            '<span></span>' +
+            (item.carried ? '<span class="planner-tag">이월</span>' : '') +
+          '</label>' +
+          (readOnly ? '' :
+            '<div class="planner-actions">' +
+              '<button type="button" class="planner-edit" aria-label="할 일 수정">✎</button>' +
+              '<button type="button" class="planner-remove" aria-label="할 일 삭제">✕</button>' +
+            '</div>');
+        li.querySelector('span').textContent = item.text; // textContent로 넣어 XSS 방지
+        list.appendChild(li);
+      });
+    }
+
+    function startEdit(li, item) {
+      var span = li.querySelector('.planner-check span');
+      var editInput = document.createElement('input');
+      editInput.type = 'text';
+      editInput.className = 'input planner-edit-input';
+      editInput.value = item.text;
+      span.replaceWith(editInput);
+      editInput.focus();
+      editInput.select();
+
+      var committed = false;
+      function commit() {
+        if (committed) return;
+        committed = true;
+        var newText = editInput.value.trim();
+        if (newText) item.text = newText;
+        saveData();
+        renderList();
+      }
+      editInput.addEventListener('blur', commit);
+      editInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); editInput.blur(); }
+        else if (e.key === 'Escape') { committed = true; renderList(); }
+      });
+    }
+
+    renderDateOptions();
+    renderList();
+
+    dateSelect.addEventListener('change', function () {
+      selectedDate = dateSelect.value;
+      renderList();
+    });
 
     form.addEventListener('submit', function (e) {
       e.preventDefault();
       var text = input.value.trim();
       if (!text) return;
 
-      var li = document.createElement('li');
-      li.className = 'planner-item';
-      li.innerHTML =
-        '<label class="planner-check">' +
-          '<input type="checkbox">' +
-          '<span></span>' +
-        '</label>' +
-        '<button type="button" class="planner-remove" aria-label="할 일 삭제">✕</button>';
-      li.querySelector('span').textContent = text; // textContent로 넣어 XSS 방지
-
-      list.appendChild(li);
+      data[today].push({ id: makeId(), text: text, done: false });
+      saveData();
       input.value = '';
       input.focus();
-      updateEmptyState();
+      renderList();
     });
 
     list.addEventListener('change', function (e) {
-      if (e.target.matches('input[type="checkbox"]')) {
-        e.target.closest('.planner-item').classList.toggle('done', e.target.checked);
-      }
+      if (!e.target.matches('input[type="checkbox"]')) return;
+      var id = e.target.closest('.planner-item').dataset.id;
+      var item = data[today].filter(function (i) { return i.id === id; })[0];
+      if (!item) return;
+      item.done = e.target.checked;
+      saveData();
+      e.target.closest('.planner-item').classList.toggle('done', item.done);
+      updateProgressChip();
     });
 
     list.addEventListener('click', function (e) {
-      var btn = e.target.closest('.planner-remove');
-      if (btn) {
-        btn.closest('.planner-item').remove();
-        updateEmptyState();
+      var removeBtn = e.target.closest('.planner-remove');
+      if (removeBtn) {
+        var removeId = removeBtn.closest('.planner-item').dataset.id;
+        data[today] = data[today].filter(function (i) { return i.id !== removeId; });
+        saveData();
+        renderList();
+        return;
+      }
+
+      var editBtn = e.target.closest('.planner-edit');
+      if (editBtn) {
+        var li = editBtn.closest('.planner-item');
+        var item = data[today].filter(function (i) { return i.id === li.dataset.id; })[0];
+        if (!item) return;
+        startEdit(li, item);
       }
     });
   })();
